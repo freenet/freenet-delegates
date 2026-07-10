@@ -1,5 +1,5 @@
 [workspace]
-members = ["upgrade-assistant"]
+members = ["upgrade-assistant", "freenet-migrate", "freenet-migrate-build"]
 resolver = "2"
 
 [workspace.dependencies]

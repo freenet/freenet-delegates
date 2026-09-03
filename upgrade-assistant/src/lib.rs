@@ -177,9 +177,7 @@ impl DelegateInterface for UpgradeAssistant {
         let origin = match attested {
             Some(bytes) => Origin(bytes.to_vec()),
             None => {
-                return Err(DelegateError::Other(
-                    "missing attested origin".to_string(),
-                ));
+                return Err(DelegateError::Other("missing attested origin".to_string()));
             }
         };
 
@@ -192,9 +190,7 @@ impl DelegateInterface for UpgradeAssistant {
                 }
                 handle_application_message(app_msg, &origin)
             }
-            InboundDelegateMsg::GetSecretResponse(response) => {
-                handle_get_secret_response(response)
-            }
+            InboundDelegateMsg::GetSecretResponse(response) => handle_get_secret_response(response),
             InboundDelegateMsg::UserResponse(_) => Err(DelegateError::Other(
                 "unexpected message type: UserResponse".into(),
             )),
@@ -319,16 +315,17 @@ fn handle_get_secret_response(
     let key_str = String::from_utf8_lossy(response.key.key()).to_string();
 
     // Find the pending operation
-    let pending_op = context.pending_ops.remove(&key_str).ok_or_else(|| {
-        DelegateError::Other(format!("No pending operation for key: {key_str}"))
-    })?;
+    let pending_op = context
+        .pending_ops
+        .remove(&key_str)
+        .ok_or_else(|| DelegateError::Other(format!("No pending operation for key: {key_str}")))?;
 
     match pending_op {
         PendingOperation::GetPreviousKey { namespace, app, .. } => {
             // Parse the stored key info if present
             let (delegate_key, code_hash) = if let Some(value) = response.value {
-                let key_info: StoredKeyInfo = ciborium::from_reader(value.as_slice())
-                    .map_err(|e| {
+                let key_info: StoredKeyInfo =
+                    ciborium::from_reader(value.as_slice()).map_err(|e| {
                         DelegateError::Deser(format!("Failed to deserialize key info: {e}"))
                     })?;
                 (Some(key_info.delegate_key), Some(key_info.code_hash))

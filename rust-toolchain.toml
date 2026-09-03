@@ -1,0 +1,18 @@
+# Pinned so upgrade_assistant.wasm is byte-reproducible across machines and CI.
+#
+# The delegate key is BLAKE3(BLAKE3(wasm) || params), so the compiled bytes ARE
+# the delegate's address. A different rustc emits different bytes (LLVM changes
+# between releases) and therefore a different delegate key, which silently
+# orphans every caller that recorded the old one.
+#
+# ALWAYS rebuild through `scripts/build-wasm.sh`. A plain `cargo build` skips
+# the --remap-path-prefix flags that keep machine-specific absolute paths out of
+# the binary, and produces a WASM only your machine can reproduce.
+#
+# When changing this pin: rebuild via the script, commit the regenerated
+# wasm/upgrade_assistant.wasm in the SAME PR, and record the outgoing key in
+# upgrade-assistant/src/previous_versions.rs first.
+[toolchain]
+channel = "1.96.0"
+components = ["rustfmt", "clippy"]
+targets = ["wasm32-unknown-unknown"]

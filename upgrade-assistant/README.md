@@ -85,10 +85,11 @@ enum UpgradeAssistantResponse {
 ## Building
 
 ```bash
-cargo build --release --target wasm32-unknown-unknown
+../scripts/build-wasm.sh
 ```
 
-The compiled WASM will be at `target/wasm32-unknown-unknown/release/upgrade_assistant.wasm`.
+The build lands at `target/wasm32-unknown-unknown/release/upgrade_assistant.wasm`
+and is copied over `wasm/upgrade_assistant.wasm`.
 
 ## WASM Binary
 
@@ -96,6 +97,21 @@ The `wasm/upgrade_assistant.wasm` file is the canonical binary. This is committe
 - The delegate key is derived from the WASM hash
 - Everyone must use the exact same binary to get the same key
 - Prevents "works on my machine" issues with different compiler versions
+
+The last point only holds if the build is actually reproducible, which takes
+three things, all enforced by `scripts/build-wasm.sh` and checked by
+`.github/workflows/check-wasm.yml`:
+
+- **`Cargo.lock` is committed** and the build is `--locked`. Dependency
+  requirements here are caret requirements, so without the lockfile an upstream
+  release nobody asked for changes the compiled bytes.
+- **`rust-toolchain.toml` pins the compiler.** Different rustc, different
+  codegen, different delegate key.
+- **`--remap-path-prefix` strips absolute paths.** `panic!` embeds `file!()`,
+  which for registry and sysroot crates is an absolute path under `$CARGO_HOME`
+  / `$RUSTUP_HOME`. Those strings are ordinary rodata and survive
+  `profile.release.strip = true` untouched, so an unremapped build bakes in the
+  builder's home directory and no one else can reproduce it.
 
 ## Self-Migration
 

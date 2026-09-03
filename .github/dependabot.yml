@@ -84,9 +84,13 @@ updates:
 # contract and strand existing user data. ANY wasm change moves the address: a
 # direct bump, a transitive bump, or a rustc upgrade.
 #
-# This repo has NO migration or wasm-hash guard workflow, so nothing here will
-# turn red when that happens. Before merging a cargo PR, rebuild and compare the
-# contract key, and ship a migration if it moved. See the `freenet-app-migration`
+# `.github/workflows/check-wasm.yml` turns red when that happens: it rebuilds
+# upgrade_assistant.wasm from source and fails if the committed artifact no
+# longer matches. So a grouped bump that moves the delegate key cannot merge
+# looking routine -- but the guard reports the move, it does not decide whether
+# the move is acceptable. When it fires, either revert the bump or regenerate
+# the artifact deliberately and record the outgoing key in
+# upgrade-assistant/src/previous_versions.rs. See the `freenet-app-migration`
 # skill and `.claude/rules/` in the freenet tree.
 #
 # Dependabot does not create this hazard -- a hand-run `cargo update` does the

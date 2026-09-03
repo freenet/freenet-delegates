@@ -14,13 +14,21 @@ A general-purpose delegate that helps ANY delegate upgrade gracefully by trackin
 
 ## Building
 
-```bash
-# Build all delegates
-cargo build --release --target wasm32-unknown-unknown
+The committed WASM artifacts are the delegates' on-network addresses, so they
+must be built the one canonical way:
 
-# Build specific delegate
-cargo build --release --target wasm32-unknown-unknown -p upgrade-assistant
+```bash
+scripts/build-wasm.sh
 ```
+
+This pins the toolchain (`rust-toolchain.toml`), builds `--locked` against the
+committed `Cargo.lock`, strips machine-specific absolute paths out of the binary,
+and refreshes `upgrade-assistant/wasm/upgrade_assistant.wasm`.
+
+Do not use a bare `cargo build` to produce an artifact you intend to commit: it
+skips the path remapping and produces a WASM only your machine can reproduce.
+CI (`.github/workflows/check-wasm.yml`) rebuilds and diffs on every pull request,
+so an artifact built the wrong way turns the build red.
 
 ## Testing
 

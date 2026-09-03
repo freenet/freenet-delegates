@@ -1,0 +1,96 @@
+name: check-wasm
+
+# Deliberately NOT path-filtered.
+#
+# A path filter is where a re-key sneaks through: the delegate key is the hash
+# of the compiled WASM, and the set of inputs that can move it is wider than it
+# looks (Cargo.lock, Cargo.toml, rust-toolchain.toml, the build script, any
+# source file, a future .cargo/config.toml). Every time that list is enumerated
+# by hand, something is left off it. This workspace is one small crate and the
+# build is cached, so running the guard on every pull request costs less than
+# maintaining the list, and it lets this be a required check without the
+# perpetually-pending state that path-filtered required checks produce.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  wasm-drift:
+    name: committed delegate WASM is current
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # No toolchain action: rust-toolchain.toml pins the channel, components and
+      # the wasm target, and `rustup toolchain install` with no argument installs
+      # exactly that. Naming a version here too would let the two drift, and the
+      # delegate's address depends on the exact compiler.
+      - run: rustup toolchain install && rustup show
+
+      - uses: Swatinem/rust-cache@v2
+
+      # The delegate key is BLAKE3(BLAKE3(wasm) || params), so the committed
+      # upgrade-assistant/wasm/upgrade_assistant.wasm IS the delegate's address.
+      # This rebuilds it from source and diffs. A red diff means the address this
+      # source produces is not the address that is committed -- either the
+      # artifact is stale, or a dependency/toolchain change moved the key.
+      #
+      # This IS a cross-machine byte-reproducibility assertion: it compares an
+      # artifact built on a contributor's machine against a rebuild on the
+      # runner. scripts/build-wasm.sh is what makes that possible (a pinned
+      # toolchain, a locked dependency tree, and --remap-path-prefix so no
+      # machine-specific absolute path is baked in). A plain `cargo build` here
+      # would fail against any artifact built anywhere else.
+      #
+      # RUSTFLAGS is cleared: build-wasm.sh appends ${RUSTFLAGS:-} to its own
+      # remap flags, so anything set at the workflow level would reach this build
+      # and not a local one, and the whole point of the job is byte identity.
+      #
+      # Delete the artifact first, so a build that fails to write it shows up as
+      # a deletion in the diff rather than silently passing if the script's
+      # output path ever drifts from the path being compared.
+      - name: rebuild delegate wasm
+        env:
+          RUSTFLAGS: ""
+        run: |
+          rm -f upgrade-assistant/wasm/upgrade_assistant.wasm
+          bash scripts/build-wasm.sh
+
+      - name: committed artifact matches source
+        run: |
+          if ! git diff --quiet -- upgrade-assistant/wasm/upgrade_assistant.wasm; then
+            echo "::error::The committed delegate WASM does not match this source tree."
+            echo ""
+            echo "The delegate key is derived from these bytes, so THE DELEGATE ADDRESS"
+            echo "HAS MOVED. Anything stored under the old key is unreachable from the"
+            echo "new one."
+            echo ""
+            echo "If the move is intended, regenerate the artifact deliberately:"
+            echo "  1. Record the outgoing delegate key and code hash in"
+            echo "     upgrade-assistant/src/previous_versions.rs"
+            echo "  2. Run scripts/build-wasm.sh"
+            echo "  3. Commit the regenerated wasm in the SAME pull request"
+            echo ""
+            echo "If it is not intended, it was most likely caused by a dependency bump"
+            echo "in Cargo.lock or a change to rust-toolchain.toml. Revert it."
+            echo ""
+            git diff --stat -- upgrade-assistant/wasm/upgrade_assistant.wasm
+            exit 1
+          fi
+          echo "committed WASM matches source: the delegate key is unchanged"
+
+      # Uploaded so a maintainer can inspect or adopt the rebuild without having
+      # to reproduce the runner's environment. Local builds print the BLAKE3 code
+      # hash via scripts/build-wasm.sh when b3sum is installed.
+      - name: upload rebuilt wasm on drift
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: upgrade-assistant-wasm-rebuilt-${{ github.sha }}
+          path: target/wasm32-unknown-unknown/release/upgrade_assistant.wasm
+          retention-days: 14
+          if-no-files-found: warn
